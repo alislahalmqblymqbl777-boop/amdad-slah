@@ -1190,16 +1190,13 @@ textarea#returnWithdrawNotes{
 <button class="btn btn-primary" onclick="saveFooterSettings()">💾 حفظ التذييل</button>
 <hr>
 
-<h3 class="text-gold">🔹 الشعارات</h3>
-<div class="info-box">💡 بعد تحديد الشعارات من الأزرار أدناه، اضغط على زر <strong>"💾 حفظ الشعارات"</strong> لتثبيتها بشكل دائم.</div>
-<div class="row">
-<div class="col"><label>شعار سند التوريد</label><input type="file" accept="image/*" onchange="setLogo('supply', this)"></div>
-<div class="col"><label>شعار سند الصرف</label><input type="file" accept="image/*" onchange="setLogo('withdraw', this)"></div>
-<div class="col"><label>شعار التقارير والمذكرات</label><input type="file" accept="image/*" onchange="setLogo('movement', this)"></div>
-</div>
+<h3 class="text-gold">🔹 شعار البرنامج الموحد</h3>
+<div class="info-box">💡 يستخدم البرنامج الشعار نفسه في سندات التوريد والصرف والتقارير والمذكرات. يمكنك اختيار صورة من مستعرض الملفات وحفظها على هذا الجهاز، أو وضع ملف <strong>logo.png</strong> بجوار <strong>index.html</strong> داخل مجلد التطبيق ليكون شعارًا افتراضيًا عند تثبيت البرنامج على جهاز جديد.</div>
+<div class="row"><div class="col"><label>اختيار صورة الشعار من الملفات</label><input type="file" id="sharedLogoInput" accept="image/*" onchange="setLogo('shared', this)"></div></div>
 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-<button class="btn btn-success" onclick="saveLogoSettings()">💾 حفظ الشعارات</button>
-<button class="btn btn-danger" onclick="clearLogos()">🗑️ حذف جميع الشعارات</button>
+<button class="btn btn-success" onclick="saveLogoSettings()">💾 حفظ الشعار المختار</button>
+<button class="btn btn-primary" onclick="useAppFolderLogo()">↩️ استخدام شعار مجلد التطبيق (logo.png)</button>
+<button class="btn btn-primary" onclick="renderLogosPreview()">🔄 تحديث المعاينة</button>
 </div>
 <div id="logosPreview" style="display:flex;gap:15px;flex-wrap:wrap;margin-top:12px;padding:10px;background:rgba(0,0,0,0.2);border-radius:10px;border:1px solid rgba(201,162,39,0.3);min-height:90px;"></div>
 
@@ -1670,17 +1667,8 @@ async function initStorage(){
         await migrateFromLegacy(false);
         await loadAllToMemory();
 
-        if(_memoryCache.logoData && typeof _memoryCache.logoData === 'object' && Object.keys(_memoryCache.logoData).length > 0){
-            logoData = Object.assign({ supply:'', withdraw:'', movement:'', entities:'' }, _memoryCache.logoData);
-        } else {
-            try{
-                const ld = JSON.parse(localStorage.getItem('logoData') || '{}');
-                if(ld && Object.keys(ld).length){
-                    logoData = Object.assign({ supply:'', withdraw:'', movement:'', entities:'' }, ld);
-                    if(IDB.isReady()) IDB.kvSet('logoData', logoData).catch(function(){});
-                }
-            }catch(e){}
-        }
+        // لا نستبدل شعار مجلد التطبيق بإعداد شعار قديم محفوظ على جهاز واحد.
+        logoData = normalizeLogoData({shared:EMBEDDED_SHARED_LOGO});
 
         if(_memoryCache.headerSettings) headerSettings = Object.assign({}, headerSettings, _memoryCache.headerSettings);
         if(_memoryCache.footerSettings) footerSettings = Object.assign({}, footerSettings, _memoryCache.footerSettings);
@@ -1716,7 +1704,7 @@ function loadFromLocalStorageFallback(){
                 _memoryCache[k] = Array.isArray(v) ? v : [];
             }catch(e){ _memoryCache[k] = []; }
         });
-        try{ _memoryCache.logoData = JSON.parse(localStorage.getItem('logoData') || '{}'); }catch(e){ _memoryCache.logoData = {}; }
+        _memoryCache.logoData = normalizeLogoData({shared:EMBEDDED_SHARED_LOGO});
         try{ _memoryCache.headerSettings = JSON.parse(localStorage.getItem('headerSettings') || 'null'); }catch(e){}
         try{ _memoryCache.footerSettings = JSON.parse(localStorage.getItem('footerSettings') || 'null'); }catch(e){}
         try{ _memoryCache.users = JSON.parse(localStorage.getItem('almadad_users') || '[]'); }catch(e){ _memoryCache.users = []; }
@@ -1739,7 +1727,7 @@ async function loadAllToMemory(){
     const entities = await IDB.kvGet('entities');
     _memoryCache.entities = Array.isArray(entities) ? entities : [];
     const logoDataV = await IDB.kvGet('logoData');
-    _memoryCache.logoData = logoDataV || { supply:'', withdraw:'', movement:'', entities:'' };
+    _memoryCache.logoData = normalizeLogoData(logoDataV || {});
     const hs = await IDB.kvGet('headerSettings');
     if(hs) _memoryCache.headerSettings = hs;
     const fs = await IDB.kvGet('footerSettings');
@@ -2153,7 +2141,8 @@ async function estimateStorageQuota(){
 const APP_PASSWORD='7718';
 const DEFAULT_SETTINGS_CODE='slah';
 let supplyItems=[];let withdrawItems=[];let returnWithdrawItems=[];
-let logoData={supply:'',withdraw:'',movement:'',entities:''};
+const EMBEDDED_SHARED_LOGO = (function(){ try { return new URL('logo.png', window.location.href).href; } catch(e) { return 'logo.png'; } })(); // ملف الشعار الثابت بجوار index.html
+let logoData={shared:EMBEDDED_SHARED_LOGO,supply:EMBEDDED_SHARED_LOGO,withdraw:EMBEDDED_SHARED_LOGO,movement:EMBEDDED_SHARED_LOGO,entities:EMBEDDED_SHARED_LOGO};
 let headerSettings={line1:'القوات المسلحة الجنوبية',line2:'المحور الثالث مشاة و إسناد',line3:'شعبة الامداد - إدارة التموين'};
 let footerSettings={rightPosition:'مدير إدارة الإمداد والتموين',rightName:'',leftPosition:'رئيس شعبة الإمداد',leftName:'',withdrawFooterMode:'standard',withdrawFooterRightPosition:'مدير إدارة الإمداد والتموين',withdrawFooterRightName:''};
 let _currentPreviewVoucher=null;let _voucherPreviewReturnScreen='mainScreen';
@@ -2776,9 +2765,18 @@ async function clearAuditLog(){
    ============ دوال العرض الأساسية والمساعدة =========================
    ===================================================================== */
 
+function getSharedLogo(){
+    // الشعار المختار من الإعدادات له الأولوية؛ وإن لم يوجد نستخدم logo.png من مجلد التطبيق.
+    const saved = logoData && (logoData.shared || logoData.supply || logoData.withdraw || logoData.movement || logoData.entities);
+    return (saved && saved !== EMBEDDED_SHARED_LOGO) ? saved : (EMBEDDED_SHARED_LOGO || saved || '');
+}
+function normalizeLogoData(data){
+    data = (data && typeof data === 'object') ? data : {};
+    const shared = data.shared || data.supply || data.withdraw || data.movement || data.entities || EMBEDDED_SHARED_LOGO || '';
+    return {shared:shared, supply:shared, withdraw:shared, movement:shared, entities:shared};
+}
 function loadAllData(){
-    if(!logoData || typeof logoData !== 'object') logoData = { supply:'', withdraw:'', movement:'', entities:'' };
-    if(!('entities' in logoData)) logoData.entities = '';
+    logoData = normalizeLogoData(logoData);
     if(_memoryCache.headerSettings) headerSettings = Object.assign({}, headerSettings, _memoryCache.headerSettings);
     if(_memoryCache.footerSettings) footerSettings = Object.assign({}, footerSettings, _memoryCache.footerSettings);
 }
@@ -2806,9 +2804,9 @@ function getHeaderRightHtml(){
            escapeVoucherHtml(headerSettings.line2) + '<br>' +
            escapeVoucherHtml(headerSettings.line3);
 }
-function getCurrentUserFooterText(){
-    const u = getCurrentUsername();
-    return 'تم التصدير بواسطة نظام الإمداد - تصميم صلاح المقبلي - المستخدم: ' + escapeVoucherHtml(u);
+function getCurrentUserFooterText(username){
+    const u = String(username || getCurrentUsername() || 'غير معروف').trim();
+    return 'تم التصدير بواسطة نظام الإمداد - تصميم صلاح المقبلي - اسم المستخدم - ' + escapeVoucherHtml(u);
 }
 
 /* =====================================================================
@@ -3054,7 +3052,7 @@ function buildFullReportHtmlForExcel(mainContentHtml){
 }
 
 function buildReportHeader(type, no, date){
-    const logo = type === 'entities' ? (logoData.entities || logoData.movement || '') : (logoData.movement || '');
+    const logo = getSharedLogo();
     return '<div class="report-print-header" style="display:grid;grid-template-columns:1fr 180px 1fr;align-items:center;gap:10px;">' +
         '<div style="text-align:right;">' + getHeaderRightHtml() + '</div>' +
         '<div style="text-align:center;">' + (logo ? '<img src="' + logo + '" style="max-height:70px;max-width:120px;">' : '') + '</div>' +
@@ -3394,7 +3392,7 @@ async function autoSaveFuelVoucherPdf(f){
    ===================================================================== */
 
 function getVoucherLogo(v){
-    return v.logo || (v.type === 'supply' ? logoData.supply : logoData.withdraw) || '';
+    return getSharedLogo() || v.logo || ''; 
 }
 
 /* ✨ buildVoucherInnerContent: الملاحظات خارج الإطار الرئيسي */
@@ -3457,7 +3455,7 @@ function buildVoucherInnerContent(v){
                 '<div class="footer">' + footer + '</div>' +
             '</div>' +
             notesOutside +
-            '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText() + '</div>';
+            '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText(v.createdBy || v.lastModifiedBy) + '</div>';
 }
 
 /* ✨ buildVoucherPrintHtml */
@@ -3532,7 +3530,7 @@ function clearMemoForm(){
 }
 
 function buildMemoInnerContent(memo){
-    const logo = logoData.movement || logoData.withdraw || '';
+    const logo = getSharedLogo();
     const logoHtml = logo ? '<img src="' + logo + '" alt="">' : '';
     const rH = getHeaderRightHtml();
     const lH = '<strong>التاريخ:</strong> ' + escapeMemoText(memo.date||'') + '<br><strong>رقم المذكرة:</strong> ' + escapeMemoText(memo.number||'') + '<br><strong>المرفقات:</strong> ' + escapeMemoText(memo.attachments||'-');
@@ -3556,7 +3554,7 @@ function buildMemoInnerContent(memo){
                 '<div class="name">الاسم: ' + escapeMemoText(memo.senderName||'___________') + '</div>' +
                 '<div class="sign">التوقيع: ___________</div>' +
             '</div></div>' +
-            '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText() + '</div>';
+            '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText(v.createdBy || v.lastModifiedBy) + '</div>';
 }
 
 function showMemoPreviewInApp(memo, returnScreen){
@@ -4452,51 +4450,60 @@ function generateMemoNumber(force){
    ============ الشعارات ===============================================
    ===================================================================== */
 function setLogo(type, input){
-    const f = input.files[0];
+    const f = input && input.files && input.files[0];
     if(!f) return;
+    if(!f.type || !f.type.startsWith('image/')){ _notify('❌ اختر ملف صورة صالحًا','error'); input.value=''; return; }
     const r = new FileReader();
     r.onload = function(e){
-        logoData[type] = e.target.result;
-        if(IDB.isReady()) IDB.kvSet('logoData', logoData).catch(function(){});
-        try{ localStorage.setItem('logoData', JSON.stringify(logoData)); }catch(err){}
+        const shared = e.target.result;
+        logoData = {shared:shared, supply:shared, withdraw:shared, movement:shared, entities:shared};
         renderLogosPreview();
-        showToast('✅ تم تحديد الشعار — اضغط "حفظ الشعارات" للتثبيت النهائي', 'warn');
+        showToast('✅ تم اختيار الشعار — اضغط «حفظ الشعار المختار» لحفظه','warn');
     };
+    r.onerror = function(){ _notify('❌ تعذر قراءة ملف الصورة','error'); };
     r.readAsDataURL(f);
 }
 async function saveLogoSettings(){
     try{
+        logoData = normalizeLogoData(logoData);
         if(IDB.isReady()) await IDB.kvSet('logoData', logoData);
-        localStorage.setItem('logoData', JSON.stringify(logoData));
+        try{ localStorage.setItem('logoData', JSON.stringify(logoData)); }catch(storageError){ throw new Error('الصورة كبيرة على مساحة التخزين؛ اختر صورة أصغر'); }
         _memoryCache.logoData = JSON.parse(JSON.stringify(logoData));
         renderLogosPreview();
-        logAudit('edit','إعدادات','حفظ الشعارات');
-        _notify('✅ تم حفظ الشعارات بنجاح — ستظهر عند إعادة التشغيل','success');
+        logAudit('edit','إعدادات','حفظ الشعار الموحد');
+        _notify('✅ تم حفظ الشعار الموحد على هذا الجهاز','success');
     }catch(e){ _notify('❌ فشل الحفظ: ' + e.message,'error'); }
 }
 async function clearLogos(){
-    if(!await _confirm('⚠️ حذف جميع الشعارات؟', {type:'danger'})) return;
-    logoData = { supply:'', withdraw:'', movement:'', entities:'' };
+    if(!await _confirm('⚠️ حذف الشعار الموحد؟', {type:'danger'})) return;
+    logoData = {shared:EMBEDDED_SHARED_LOGO, supply:EMBEDDED_SHARED_LOGO, withdraw:EMBEDDED_SHARED_LOGO, movement:EMBEDDED_SHARED_LOGO, entities:EMBEDDED_SHARED_LOGO};
     if(IDB.isReady()) await IDB.kvSet('logoData', logoData);
     localStorage.setItem('logoData', JSON.stringify(logoData));
     _memoryCache.logoData = JSON.parse(JSON.stringify(logoData));
+    const input = document.getElementById('sharedLogoInput'); if(input) input.value='';
     renderLogosPreview();
-    _notify('🗑️ تم حذف جميع الشعارات','success');
+    _notify(EMBEDDED_SHARED_LOGO ? '🗑️ حُذف الشعار المختار وعاد شعار البرنامج المضمّن' : '🗑️ تم حذف الشعار الموحد','success');
+}
+function useAppFolderLogo(){
+    logoData = {shared:EMBEDDED_SHARED_LOGO, supply:EMBEDDED_SHARED_LOGO, withdraw:EMBEDDED_SHARED_LOGO, movement:EMBEDDED_SHARED_LOGO, entities:EMBEDDED_SHARED_LOGO};
+    saveLogoSettings();
+    const input = document.getElementById('sharedLogoInput'); if(input) input.value='';
 }
 function renderLogosPreview(){
     const c = document.getElementById('logosPreview');
     if(!c) return;
-    const labels = {supply:'📥 سند التوريد', withdraw:'📤 سند الصرف', movement:'📊 التقارير والمذكرات', entities:'🏢 الجهات'};
-    let h = '';
-    Object.keys(labels).forEach(k => {
-        const src = (logoData && logoData[k]) || '';
-        h += '<div class="logo-preview-item">';
-        h += '<div class="lbl">' + labels[k] + '</div>';
-        if(src) h += '<img src="' + src + '" alt="">';
-        else h += '<div class="empty">لا يوجد شعار</div>';
-        h += '</div>';
-    });
-    c.innerHTML = h;
+    const src = getSharedLogo();
+    c.innerHTML = '<div class="logo-preview-item" style="min-width:180px"><div class="lbl">معاينة الشعار الموحد</div><img id="appFolderLogoPreview" alt="الشعار الموحد" style="max-height:90px;max-width:180px" src=""></div>';
+    const img = document.getElementById('appFolderLogoPreview');
+    if(!img) return;
+    img.onerror = function(){
+        const msg = document.createElement('div');
+        msg.className = 'empty';
+        msg.textContent = 'لم يتم العثور على صورة شعار محفوظة أو ملف logo.png بجوار index.html';
+        if(img.parentNode) img.parentNode.appendChild(msg);
+        img.style.display = 'none';
+    };
+    img.src = src || '';
 }
 
 /* =====================================================================
@@ -4629,7 +4636,7 @@ async function restoreBackup(input){
         try{
             const d = JSON.parse(e.target.result);
             ['stores','entities','items','movement','vouchers','memos','assets','food','fuel','users'].forEach(k => { if(d[k]) saveData(k, d[k]); });
-            if(d.logoData){ logoData = d.logoData; if(IDB.isReady()) await IDB.kvSet('logoData', logoData); localStorage.setItem('logoData', JSON.stringify(logoData)); }
+            if(d.logoData){ logoData = normalizeLogoData(d.logoData); if(IDB.isReady()) await IDB.kvSet('logoData', logoData); localStorage.setItem('logoData', JSON.stringify(logoData)); }
             if(d.headerSettings){ headerSettings = {...headerSettings, ...d.headerSettings}; if(IDB.isReady()) await IDB.kvSet('headerSettings', headerSettings); localStorage.setItem('headerSettings', JSON.stringify(headerSettings)); }
             if(d.footerSettings){ footerSettings = {...footerSettings, ...d.footerSettings}; if(IDB.isReady()) await IDB.kvSet('footerSettings', footerSettings); localStorage.setItem('footerSettings', JSON.stringify(footerSettings)); }
             if(d.settingsCode){ _memoryCache.settingsCode = d.settingsCode; if(IDB.isReady()) await IDB.kvSet('settingsCode', d.settingsCode); localStorage.setItem('appSettingsCode', d.settingsCode); }
@@ -4895,7 +4902,7 @@ async function issueSupply(){
     if(anomaly){ if(!await _confirm('🚨 تنبيه كشف الشذوذ:\n\n' + anomaly + '\n\nمتابعة؟', {type:'warning'})) return; }
     const old = isEditing ? JSON.parse(JSON.stringify(_editingVoucherOriginal)) : null;
     if(isEditing) reverseVoucherEffects(old);
-    const v = {type:'supply', number, date, issuedDate:date, store, source, notes, items:JSON.parse(JSON.stringify(supplyItems)), createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString()};
+    const v = {type:'supply', number, date, issuedDate:date, store, source, notes, items:JSON.parse(JSON.stringify(supplyItems)), createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString(), createdBy:isEditing ? (old.createdBy || getCurrentUsername()) : getCurrentUsername(), lastModifiedBy:isEditing ? getCurrentUsername() : (old && old.lastModifiedBy || '')};
     const vs = getData('vouchers');
     if(isEditing) vs[_editingVoucherIndex] = v;
     else vs.push(v);
@@ -5032,7 +5039,7 @@ async function issueWithdraw(){
             return;
         }
     }
-    const v = {type:'withdraw', number, date, issuedDate:date, store, entity, receiver, order, notes, items:JSON.parse(JSON.stringify(withdrawItems)), createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString()};
+    const v = {type:'withdraw', number, date, issuedDate:date, store, entity, receiver, order, notes, items:JSON.parse(JSON.stringify(withdrawItems)), createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString(), createdBy:isEditing ? (old.createdBy || getCurrentUsername()) : getCurrentUsername(), lastModifiedBy:isEditing ? getCurrentUsername() : (old && old.lastModifiedBy || '')};
     const vs = getData('vouchers');
     if(isEditing) vs[_editingVoucherIndex] = v;
     else vs.push(v);
@@ -5141,7 +5148,7 @@ async function issueReturnWithdraw(){
             return;
         }
     }
-    const v = {type:'return_withdraw', number, date, issuedDate:date, store, entity, receiver, order:'', notes, items:returned, createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString()};
+    const v = {type:'return_withdraw', number, date, issuedDate:date, store, entity, receiver, order:'', notes, items:returned, createdAt:isEditing && old.createdAt ? old.createdAt : new Date().toISOString(), createdBy:isEditing ? (old.createdBy || getCurrentUsername()) : getCurrentUsername(), lastModifiedBy:isEditing ? getCurrentUsername() : ''};
     const vs = getData('vouchers');
     if(isEditing) vs[_editingVoucherIndex] = v;
     else vs.push(v);
@@ -5303,12 +5310,12 @@ async function exportVoucherPdf(){
 }
 function printSupply(){
     if(!supplyItems.length){ _notify('أضف أصناف','warn'); return; }
-    const v = {type:'supply', number:document.getElementById('supplyNumber').value.trim() || 'توريد-' + String(Date.now()).slice(-6), date:document.getElementById('supplyDate').value, issuedDate:document.getElementById('supplyDate').value, store:document.getElementById('supplyStore').value, source:document.getElementById('supplySource').value.trim() || 'غير محدد', notes:document.getElementById('supplyNotes').value.trim() || '', items:JSON.parse(JSON.stringify(supplyItems)), logo:logoData.supply||''};
+    const v = {type:'supply', number:document.getElementById('supplyNumber').value.trim() || 'توريد-' + String(Date.now()).slice(-6), date:document.getElementById('supplyDate').value, issuedDate:document.getElementById('supplyDate').value, store:document.getElementById('supplyStore').value, source:document.getElementById('supplySource').value.trim() || 'غير محدد', notes:document.getElementById('supplyNotes').value.trim() || '', items:JSON.parse(JSON.stringify(supplyItems)), logo:getSharedLogo()};
     showVoucherPreviewInApp(v, 'supplyScreen');
 }
 function printWithdraw(){
     if(!withdrawItems.length){ _notify('أضف أصناف','warn'); return; }
-    const v = {type:'withdraw', number:document.getElementById('withdrawNumber').value.trim() || 'صرف-' + String(Date.now()).slice(-6), date:document.getElementById('withdrawDate').value, issuedDate:document.getElementById('withdrawDate').value, store:document.getElementById('withdrawStore').value, entity:document.getElementById('withdrawEntity').value, receiver:document.getElementById('withdrawReceiver').value, order:document.getElementById('withdrawOrder').value, notes:document.getElementById('withdrawNotes').value, items:JSON.parse(JSON.stringify(withdrawItems)), logo:logoData.withdraw||''};
+    const v = {type:'withdraw', number:document.getElementById('withdrawNumber').value.trim() || 'صرف-' + String(Date.now()).slice(-6), date:document.getElementById('withdrawDate').value, issuedDate:document.getElementById('withdrawDate').value, store:document.getElementById('withdrawStore').value, entity:document.getElementById('withdrawEntity').value, receiver:document.getElementById('withdrawReceiver').value, order:document.getElementById('withdrawOrder').value, notes:document.getElementById('withdrawNotes').value, items:JSON.parse(JSON.stringify(withdrawItems)), logo:getSharedLogo()};
     showVoucherPreviewInApp(v, 'withdrawScreen');
 }
 
@@ -5735,7 +5742,9 @@ function issueMemo(){
         body: bodyText,
         bodyHtml: bodyHtml,
         attachments, senderPosition, senderName,
-        createdAt: isEditing && getData('memos')[_editingMemoIndex].createdAt ? getData('memos')[_editingMemoIndex].createdAt : new Date().toISOString()
+        createdAt: isEditing && getData('memos')[_editingMemoIndex].createdAt ? getData('memos')[_editingMemoIndex].createdAt : new Date().toISOString(),
+        createdBy: isEditing ? (getData('memos')[_editingMemoIndex].createdBy || getCurrentUsername()) : getCurrentUsername(),
+        lastModifiedBy: isEditing ? getCurrentUsername() : ''
     };
     const memos = getData('memos');
     if(isEditing){ memos[_editingMemoIndex] = memo; saveData('memos', memos); logAudit('edit','مذكرة','تعديل: ' + number); clearMemoForm(); renderMemos(); showToast('✅ تم حفظ التعديل'); }
@@ -6417,7 +6426,7 @@ function getFuelVoucherInnerContent(f){
     const ml = getArabicMonthFromDate(f.date);
     const qn = Number(f.qty)||0;
     const qw = numberToArabicWords(qn);
-    const logo = logoData.withdraw || logoData.movement || '';
+    const logo = getSharedLogo();
     const lh = logo ? '<img src="' + logo + '" style="max-height:70px;max-width:120px;object-fit:contain;" alt="">' : '';
     const today = getTodayISO();
     const no = (isS ? 'توريد-مخصص-' : 'صرف-مخصص-') + String(Date.now()).slice(-6);
@@ -6432,7 +6441,7 @@ function getFuelVoucherInnerContent(f){
         '<div class="info"><strong>الوحدة العسكرية:</strong> ' + escapeVoucherHtml(f.unit||'-') + ' &nbsp; | &nbsp; <strong>المستلم:</strong> ' + escapeVoucherHtml(f.receiver||'-') + '<br><strong>المادة:</strong> ' + escapeVoucherHtml(f.type||'-') + ' &nbsp; | &nbsp; <strong>العملية:</strong> ' + escapeVoucherHtml(f.operation||'-') + ' &nbsp; | &nbsp; <strong>التاريخ:</strong> ' + escapeVoucherHtml(f.date||'-') + (ml ? ' (' + escapeVoucherHtml(ml) + ')' : '') + '</div>' +
         '<table style="table-layout:auto;width:auto;min-width:100%;"><thead><tr><th>التسلسل</th><th>المادة</th><th>الوحدة (لتر)</th><th>الكمية بالأرقام</th><th>الكمية بالأحرف</th><th>الملاحظة</th></tr></thead><tbody><tr><td>1</td><td>' + escapeVoucherHtml(f.type||'-') + '</td><td>لتر</td><td>' + qn + '</td><td>' + escapeVoucherHtml(qw) + ' لتر</td><td>' + escapeVoucherHtml(f.notes||'-') + '</td></tr></tbody></table>' +
         '<div class="footer"><div><strong>' + rp + '</strong><br>الاسم: ' + rn + '<br>التوقيع: ___________</div><div><strong>' + lp + '</strong><br>الاسم: ' + ln + '<br>التوقيع: ___________</div></div>' +
-        '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText() + '</div>';
+        '<div class="export-footer-text" style="text-align:center;font-size:10px;color:#444;margin-top:14px;border-top:1px dashed #999;padding-top:6px;">' + getCurrentUserFooterText(memo.createdBy || memo.lastModifiedBy) + '</div>';
 }
 function showFuelVoucherById(id){
     const f = getData('fuel').find(x => String(x.id||'') === String(id));
